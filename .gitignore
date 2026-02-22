@@ -41,3 +41,6 @@ app-example
 # generated native folders
 /ios
 /android
+
+# local migration backups
+_outer_backup_2026-02-22/
