@@ -14,6 +14,7 @@ const STORAGE_KEY = "@todo_tasks_v1";
 
 export default function HomeScreen() {
   const [task, setTask] = useState("");
+  const [filter, setFilter] = useState("all"); // 'all' | 'active' | 'completed'
   const [tasks, setTasksArray] = useState([]);
 
   // Load tasks once on app start
@@ -75,6 +76,22 @@ export default function HomeScreen() {
     setTasksArray(tasks.filter((t) => t.id !== id));
   };
 
+  const visibleTasks = tasks.filter((t) => {
+    if (filter === "active") {
+      // keep the unfinished tasks if the filter is "active"
+      return !t.completed;
+    } else if (filter === "completed") {
+      // keep the finished tasks if the filter is "completed"
+      return t.completed;
+    } else {
+      // keep all tasks if the filter is "all"
+      return true;
+    }
+  });
+
+  // active task count
+  const remainingTasksCount = tasks.filter((t) => !t.completed).length;
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Todo Lister</Text>
@@ -90,7 +107,7 @@ export default function HomeScreen() {
       </View>
 
       <FlatList
-        data={tasks}
+        data={visibleTasks}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <View style={styles.taskRow}>
@@ -104,6 +121,37 @@ export default function HomeScreen() {
           </View>
         )}
       />
+
+      <View style={styles.filterRow}>
+        <TouchableOpacity
+          style={[styles.filterButton, filter === "all" && styles.filterActive]}
+          onPress={() => setFilter("all")}
+        >
+          <Text style={styles.filterText}>All</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.filterButton,
+            filter === "active" && styles.filterActive,
+          ]}
+          onPress={() => setFilter("active")}
+        >
+          <Text style={styles.filterText}>Active</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.filterButton,
+            filter === "completed" && styles.filterActive,
+          ]}
+          onPress={() => setFilter("completed")}
+        >
+          <Text style={styles.filterText}>Completed</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Text style={styles.counter}>{remainingTasksCount} remaining</Text>
     </View>
   );
 }
@@ -145,6 +193,27 @@ const styles = StyleSheet.create({
   completed: {
     fontSize: 18,
     textDecorationLine: "line-through",
+    color: "gray",
+  },
+  filterRow: {
+    flexDirection: "row",
+    marginBottom: 10,
+    gap: 10,
+  },
+  filterButton: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  filterActive: {
+    backgroundColor: "#eee",
+  },
+  filterText: {
+    fontSize: 14,
+  },
+  counter: {
+    marginBottom: 10,
     color: "gray",
   },
 });
