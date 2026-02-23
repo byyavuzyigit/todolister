@@ -14,6 +14,8 @@ const STORAGE_KEY = "@todo_tasks_v1";
 
 export default function HomeScreen() {
   const [task, setTask] = useState("");
+  const [editingId, setEditingId] = useState(null); // null or the id of the task being edited
+  const [editingText, setEditingText] = useState(""); // the text being edited
   const [filter, setFilter] = useState("all"); // 'all' | 'active' | 'completed'
   const [tasks, setTasksArray] = useState([]);
 
@@ -92,6 +94,31 @@ export default function HomeScreen() {
   // active task count
   const remainingTasksCount = tasks.filter((t) => !t.completed).length;
 
+  // get the task to edit and set the editing state
+  const startEditing = (task) => {
+    setEditingId(task.id);
+    setEditingText(task.title);
+  };
+
+  // save the edited task and clear the editing state
+  const saveEdit = () => {
+    if (editingId && editingText.trim()) {
+      setTasksArray(
+        tasks.map((t) =>
+          t.id === editingId ? { ...t, title: editingText } : t,
+        ),
+      );
+      setEditingId(null);
+      setEditingText("");
+    }
+  };
+
+  // cancel editing and clear the editing state
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingText("");
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Todo Lister</Text>
@@ -111,13 +138,28 @@ export default function HomeScreen() {
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <View style={styles.taskRow}>
-            <TouchableOpacity onPress={() => toggleTask(item.id)}>
-              <Text style={item.completed ? styles.completed : styles.task}>
-                {item.title}
-              </Text>
-            </TouchableOpacity>
+            {editingId === item.id ? (
+              <>
+                <TextInput
+                  style={styles.input}
+                  value={editingText}
+                  onChangeText={setEditingText}
+                />
+                <Button title="Save" onPress={saveEdit} />
+                <Button title="Cancel" onPress={cancelEdit} />
+              </>
+            ) : (
+              <>
+                <TouchableOpacity onPress={() => toggleTask(item.id)}>
+                  <Text style={item.completed ? styles.completed : styles.task}>
+                    {item.title}
+                  </Text>
+                </TouchableOpacity>
 
-            <Button title="X" onPress={() => deleteTask(item.id)} />
+                <Button title="Edit" onPress={() => startEditing(item)} />
+                <Button title="X" onPress={() => deleteTask(item.id)} />
+              </>
+            )}
           </View>
         )}
       />
