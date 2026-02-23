@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Button,
   FlatList,
@@ -10,252 +10,229 @@ import {
   View,
 } from "react-native";
 
-const STORAGE_KEY = "@todo_tasks_v1";
+const STORAGE_KEY = "@todo_groups_v1";
 
-export default function HomeScreen() {
-  const [task, setTask] = useState("");
-  const [editingId, setEditingId] = useState(null); // null or the id of the task being edited
-  const [editingText, setEditingText] = useState(""); // the text being edited
-  const [filter, setFilter] = useState("all"); // 'all' | 'active' | 'completed'
-  const [tasks, setTasksArray] = useState([]);
+const makeId = () =>
+  Date.now().toString() + Math.random().toString(16).slice(2);
 
-  // Load tasks once on app start
+export default function ActiveGroupsScreen() {
+  const [groupName, setGroupName] = useState("");
+  const [groups, setGroups] = useState([]);
+
+  // loading groups on start
   useEffect(() => {
-    const loadTasks = async () => {
+    const load = async () => {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         if (raw) {
-          const saved = JSON.parse(raw);
-          if (Array.isArray(saved)) {
-            setTasksArray(saved);
-          }
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) setGroups(parsed);
         }
       } catch (e) {
-        console.log("Failed to load tasks:", e);
+        console.log("Load groups failed:", e);
       }
     };
-
-    loadTasks();
+    load();
   }, []);
 
-  // Save tasks whenever they change
+  // saving groups on change
   useEffect(() => {
-    const saveTasks = async () => {
+    const save = async () => {
       try {
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(groups));
       } catch (e) {
-        console.log("Failed to save tasks:", e);
+        console.log("Save groups failed:", e);
       }
     };
+    save();
+  }, [groups]);
 
-    saveTasks();
-  }, [tasks]);
+  // groups with no tasks yet should still appear as active
+  const isGroupActive = (g) =>
+    g.tasks.length === 0 || g.tasks.some((t) => !t.completed);
 
-  const addTask = () => {
-    if (!task.trim()) {
-      return;
-    }
+  const activeGroups = useMemo(() => groups.filter(isGroupActive), [groups]);
 
-    const newTask = {
-      id: Date.now().toString(),
-      title: task,
-      completed: false,
+  const addGroup = () => {
+    const name = groupName.trim();
+    if (!name) return;
+
+    const newGroup = {
+      id: makeId(),
+      name,
+      createdAt: Date.now(),
+      tasks: [],
     };
 
-    setTasksArray([...tasks, newTask]);
-    setTask("");
+    setGroups((prev) => [newGroup, ...prev]);
+    setGroupName("");
   };
 
-  const toggleTask = (id) => {
-    // toggle the completed status of the task with the matching id
-    setTasksArray(
-      tasks.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t)),
+  const deleteGroup = (groupId) => {
+    setGroups((prev) => prev.filter((g) => g.id !== groupId));
+  };
+
+  // Quick “add task inside group” MVP (1 input per group)
+  const addTaskToGroup = (groupId, title) => {
+    const clean = title.trim();
+    if (!clean) return;
+
+    const newTask = {
+      id: makeId(),
+      title: clean,
+      completed: false,
+      createdAt: Date.now(),
+    };
+
+    setGroups((prev) =>
+      prev.map((g) =>
+        g.id === groupId ? { ...g, tasks: [newTask, ...g.tasks] } : g,
+      ),
     );
   };
 
-  const deleteTask = (id) => {
-    // keep the tasks that do not match the id
-    setTasksArray(tasks.filter((t) => t.id !== id));
+  // toggle task completion / uncompletion
+  const toggleTask = (groupId, taskId) => {
+    setGroups((prev) =>
+      prev.map((g) => {
+        if (g.id !== groupId) return g;
+        return {
+          ...g,
+          tasks: g.tasks.map((t) =>
+            t.id === taskId ? { ...t, completed: !t.completed } : t,
+          ),
+        };
+      }),
+    );
   };
 
-  const visibleTasks = tasks.filter((t) => {
-    if (filter === "active") {
-      // keep the unfinished tasks if the filter is "active"
-      return !t.completed;
-    } else if (filter === "completed") {
-      // keep the finished tasks if the filter is "completed"
-      return t.completed;
-    } else {
-      // keep all tasks if the filter is "all"
-      return true;
-    }
-  });
-
-  // active task count
-  const remainingTasksCount = tasks.filter((t) => !t.completed).length;
-
-  // get the task to edit and set the editing state
-  const startEditing = (task) => {
-    setEditingId(task.id);
-    setEditingText(task.title);
-  };
-
-  // save the edited task and clear the editing state
-  const saveEdit = () => {
-    if (editingId && editingText.trim()) {
-      setTasksArray(
-        tasks.map((t) =>
-          t.id === editingId ? { ...t, title: editingText } : t,
-        ),
-      );
-      setEditingId(null);
-      setEditingText("");
-    }
-  };
-
-  // cancel editing and clear the editing state
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditingText("");
+  const deleteTask = (groupId, taskId) => {
+    setGroups((prev) =>
+      prev.map((g) => {
+        if (g.id !== groupId) return g;
+        return { ...g, tasks: g.tasks.filter((t) => t.id !== taskId) };
+      }),
+    );
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Todo Lister</Text>
+      <Text style={styles.title}>Active Groups</Text>
 
-      <View style={styles.inputContainer}>
+      <View style={styles.row}>
         <TextInput
           style={styles.input}
-          placeholder="Add a task..."
-          value={task}
-          onChangeText={setTask}
+          placeholder="New group name (e.g. Feb 23, Work)..."
+          value={groupName}
+          onChangeText={setGroupName}
         />
-        <Button title="Add" onPress={addTask} />
+        <Button title="Add" onPress={addGroup} />
       </View>
 
       <FlatList
-        data={visibleTasks}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.taskRow}>
-            {editingId === item.id ? (
-              <>
-                <TextInput
-                  style={styles.input}
-                  value={editingText}
-                  onChangeText={setEditingText}
-                />
-                <Button title="Save" onPress={saveEdit} />
-                <Button title="Cancel" onPress={cancelEdit} />
-              </>
-            ) : (
-              <>
-                <TouchableOpacity onPress={() => toggleTask(item.id)}>
-                  <Text style={item.completed ? styles.completed : styles.task}>
-                    {item.title}
-                  </Text>
-                </TouchableOpacity>
-
-                <Button title="Edit" onPress={() => startEditing(item)} />
-                <Button title="X" onPress={() => deleteTask(item.id)} />
-              </>
-            )}
-          </View>
+        data={activeGroups}
+        keyExtractor={(g) => g.id}
+        ListEmptyComponent={
+          <Text style={styles.empty}>No active groups yet.</Text>
+        }
+        renderItem={({ item: g }) => (
+          <GroupCard
+            group={g}
+            onDeleteGroup={() => deleteGroup(g.id)}
+            onAddTask={(title) => addTaskToGroup(g.id, title)}
+            onToggleTask={(taskId) => toggleTask(g.id, taskId)}
+            onDeleteTask={(taskId) => deleteTask(g.id, taskId)}
+          />
         )}
       />
+    </View>
+  );
+}
 
-      <View style={styles.filterRow}>
-        <TouchableOpacity
-          style={[styles.filterButton, filter === "all" && styles.filterActive]}
-          onPress={() => setFilter("all")}
-        >
-          <Text style={styles.filterText}>All</Text>
-        </TouchableOpacity>
+function GroupCard({
+  group,
+  onDeleteGroup,
+  onAddTask,
+  onToggleTask,
+  onDeleteTask,
+}) {
+  const [taskText, setTaskText] = useState("");
 
-        <TouchableOpacity
-          style={[
-            styles.filterButton,
-            filter === "active" && styles.filterActive,
-          ]}
-          onPress={() => setFilter("active")}
-        >
-          <Text style={styles.filterText}>Active</Text>
-        </TouchableOpacity>
+  const remainingTasksCount = group.tasks.filter((t) => !t.completed).length;
 
-        <TouchableOpacity
-          style={[
-            styles.filterButton,
-            filter === "completed" && styles.filterActive,
-          ]}
-          onPress={() => setFilter("completed")}
-        >
-          <Text style={styles.filterText}>Completed</Text>
-        </TouchableOpacity>
+  const add = () => {
+    onAddTask(taskText);
+    setTaskText("");
+  };
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <Text style={styles.groupName}>{group.name}</Text>
+        <Button title="Del" onPress={onDeleteGroup} />
       </View>
 
       <Text style={styles.counter}>{remainingTasksCount} remaining</Text>
+
+      <View style={styles.row}>
+        <TextInput
+          style={styles.input}
+          placeholder="Add task..."
+          value={taskText}
+          onChangeText={setTaskText}
+        />
+        <Button title="+" onPress={add} />
+      </View>
+
+      {group.tasks.slice(0, 6).map((t) => (
+        <View key={t.id} style={styles.taskRow}>
+          <TouchableOpacity
+            onPress={() => onToggleTask(t.id)}
+            style={{ flex: 1 }}
+          >
+            <Text style={t.completed ? styles.completed : styles.taskText}>
+              {t.title}
+            </Text>
+          </TouchableOpacity>
+          <Button title="X" onPress={() => onDeleteTask(t.id)} />
+        </View>
+      ))}
+
+      {group.tasks.length > 6 ? (
+        <Text style={styles.more}>
+          Showing 6 of {group.tasks.length} tasks…
+        </Text>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-    marginTop: 50,
-    backgroundColor: "#fff",
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "bold",
-    marginBottom: 20,
-    color: "#000",
-  },
-  inputContainer: {
-    flexDirection: "row",
-    marginBottom: 20,
-  },
+  container: { flex: 1, backgroundColor: "#fff", padding: 16, paddingTop: 50 },
+  title: { fontSize: 26, fontWeight: "bold", marginBottom: 12 },
+  row: { flexDirection: "row", gap: 10, marginBottom: 10 },
   input: {
     flex: 1,
     borderWidth: 1,
-    padding: 10,
-    marginRight: 10,
-    borderRadius: 6,
-    color: "#000",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
-  taskRow: {
+  empty: { color: "gray", marginTop: 20 },
+  card: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 12 },
+  cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 10,
+    alignItems: "center",
   },
-  task: {
-    fontSize: 18,
-    color: "#000",
-  },
+  groupName: { fontSize: 18, fontWeight: "600" },
+  counter: { color: "gray", marginTop: 6, marginBottom: 8 },
+  taskRow: { flexDirection: "row", alignItems: "center", marginTop: 8 },
+  taskText: { fontSize: 16 },
   completed: {
-    fontSize: 18,
+    fontSize: 16,
     textDecorationLine: "line-through",
     color: "gray",
   },
-  filterRow: {
-    flexDirection: "row",
-    marginBottom: 10,
-    gap: 10,
-  },
-  filterButton: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  filterActive: {
-    backgroundColor: "#eee",
-  },
-  filterText: {
-    fontSize: 14,
-  },
-  counter: {
-    marginBottom: 10,
-    color: "gray",
-  },
+  more: { marginTop: 8, color: "gray" },
 });
